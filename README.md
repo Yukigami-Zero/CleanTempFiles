@@ -8,12 +8,23 @@ A PowerShell script to clean system and user TEMP folders, ensuring optimal syst
 - Ignores files that cannot be deleted.
 
 ## Usage
-1. Download the script file `CleanTempFolder.ps1`.
+1. Download the script file:
+   - English version: `ENCleanTempFiles.ps1`
+   - Traditional Chinese version: `TCCleanTempFiles.ps1`
+
 2. Open PowerShell as an administrator.
-3. Navigate to the directory containing the script.
-4. Run the script using the command:
+
+### Option 1: Manual Execution via Path
+1. Navigate to the directory containing the script.
+2. Run the following command:
    ```
-   .\CleanTempFolder.ps1
+   .\ENCleanTempFiles.ps1
+   ```
+
+### Option 2: Execute Directly with Full Path
+1. Use the following command:
+   ```
+   powershell.exe -File "<full path to the script>\ENCleanTempFiles.ps1"
    ```
 
 ## Setting Up Automatic Cleanup
@@ -27,7 +38,7 @@ To enable automatic cleanup at system startup, follow these steps:
 5. In the **Actions** tab, add a new action:
    - Action: Start a Program
    - Program/script: `powershell.exe`
-   - Add arguments: `-File "<path to CleanTempFolder.ps1>"`
+   - Add arguments: `-File "<full path>\ENCleanTempFiles.ps1"` or `-File "<full path>\TCCleanTempFiles.ps1"`
 6. Save and enable the task.
 
 ### Option 2: Startup Folder
@@ -35,7 +46,11 @@ To enable automatic cleanup at system startup, follow these steps:
 2. Create a shortcut to PowerShell in the startup folder.
 3. Edit the shortcut properties to include:
    ```
-   powershell.exe -File "<path to CleanTempFolder.ps1>"
+   powershell.exe -File "<full path>\ENCleanTempFiles.ps1"
+   ```
+   or
+   ```
+   powershell.exe -File "<full path>\TCCleanTempFiles.ps1"
    ```
 
 ## README Language Switch
