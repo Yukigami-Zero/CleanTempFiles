@@ -1,40 +1,75 @@
-# Clean system and user TEMP folders
+# Clean TEMP folders (User & System)
 # Author: Yukigami Zero
 
-# Function to clean a TEMP folder
+function Check-Admin {
+    $IsAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
+    if (-not $IsAdmin) {
+        Write-Warning "⚠ This script requires administrator privileges to clean the system TEMP folder."
+        Write-Output "Please restart this script as an Administrator!"
+        exit 1
+    }
+}
+
+function Take-Ownership {
+    param ([string]$Path)
+    try {
+        # Take ownership to avoid permission issues
+        takeown /F $Path /A /R /D Y | Out-Null
+        icacls $Path /grant Administrators:F /T /C /Q | Out-Null
+    } catch {
+        Write-Warning "❌ Unable to change permissions: $($_.Exception.Message)"
+    }
+}
+
 function Clean-TempFolder {
     param (
         [string]$FolderPath,
         [string]$FolderName
     )
-    Write-Output "Cleaning $FolderName folder: $FolderPath"
 
-    $Files = Get-ChildItem -Path $FolderPath -Recurse -Force -ErrorAction SilentlyContinue
+    if (!(Test-Path $FolderPath)) {
+        Write-Warning "$FolderName folder does not exist: $FolderPath"
+        return
+    }
+
+    Write-Output "🔍 Starting cleanup for $FolderName folder: $FolderPath"
+
+    $Files = Get-ChildItem -Path $FolderPath -Recurse -Force -File -ErrorAction SilentlyContinue
     $FileCount = $Files.Count
-    $Counter = 0
 
-    $Files | ForEach-Object {
+    if ($FileCount -eq 0) {
+        Write-Output "✅ No cleanup required for $FolderName folder."
+        return
+    }
+
+    $Counter = 0
+    foreach ($File in $Files) {
         try {
-            Remove-Item $_.FullName -Recurse -Force -ErrorAction Stop
+            Remove-Item -Path $File.FullName -Force -ErrorAction Stop
             $Counter++
-            if ($Counter % 10 -eq 0) {
+            if ($Counter % 50 -eq 0 -or $Counter -eq $FileCount) {
                 Write-Progress -PercentComplete (($Counter / $FileCount) * 100) -Status "Cleaning in progress" -Activity "$Counter / $FileCount files cleaned"
             }
         } catch {
-            # Ignore files that fail to delete
+            Write-Warning "❌ Unable to delete: $($_.Exception.Message)"
+            Take-Ownership -Path $File.FullName
         }
     }
-    Write-Output "Cleaning completed: $FolderName folder"
+
+    Write-Output "✅ Cleanup completed for: $FolderName folder."
 }
 
-# Display author information
+# Ensure the script is running as Administrator
+Check-Admin
+
+# Display script information
 Write-Output "====================================="
-Write-Output "Clean system and user TEMP folders"
-Write-Output "Author: Yukigami Zero"
+Write-Output "🧹 System & User TEMP Folder Cleanup"
+Write-Output "📌 Author: Yukigami Zero"
 Write-Output "====================================="
 
-# Execute cleaning
+# Execute cleanup
 Clean-TempFolder -FolderPath ([System.IO.Path]::GetTempPath()) -FolderName "User TEMP"
 Clean-TempFolder -FolderPath "C:\Windows\Temp" -FolderName "System TEMP"
 
-Write-Output "All cleaning tasks are completed."
+Write-Output "🎉 All cleanup tasks completed."
