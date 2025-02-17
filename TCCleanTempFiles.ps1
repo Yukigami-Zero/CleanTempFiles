@@ -1,4 +1,5 @@
 # 清理 TEMP 資料夾，包含系統權限處理
+# 改進版 - 確保刪除所有可能的檔案與空資料夾
 # 作者: Yukigami Zero
 
 function Check-Admin {
@@ -13,7 +14,6 @@ function Check-Admin {
 function Take-Ownership {
     param ([string]$Path)
     try {
-        # 取得所有權，避免權限問題
         takeown /F $Path /A /R /D Y | Out-Null
         icacls $Path /grant Administrators:F /T /C /Q | Out-Null
     } catch {
@@ -34,25 +34,41 @@ function Clean-TempFolder {
 
     Write-Output "🔍 開始清理 $FolderName 資料夾: $FolderPath"
 
+    # 先刪除所有檔案
     $Files = Get-ChildItem -Path $FolderPath -Recurse -Force -File -ErrorAction SilentlyContinue
     $FileCount = $Files.Count
 
     if ($FileCount -eq 0) {
         Write-Output "✅ $FolderName 資料夾無需清理"
-        return
-    }
-
-    $Counter = 0
-    foreach ($File in $Files) {
-        try {
-            Remove-Item -Path $File.FullName -Force -ErrorAction Stop
+    } else {
+        $Counter = 0
+        foreach ($File in $Files) {
+            try {
+                Remove-Item -Path $File.FullName -Force -ErrorAction Stop
+            } catch {
+                Write-Warning "❌ 無法刪除: $($File.FullName)，嘗試取得權限..."
+                Take-Ownership -Path $File.FullName
+                Start-Sleep -Milliseconds 500
+                try {
+                    Remove-Item -Path $File.FullName -Force -ErrorAction Stop
+                } catch {
+                    Write-Warning "⚠ 無法刪除: $($File.FullName)"
+                }
+            }
             $Counter++
             if ($Counter % 50 -eq 0 -or $Counter -eq $FileCount) {
                 Write-Progress -PercentComplete (($Counter / $FileCount) * 100) -Status "清理中" -Activity "$Counter / $FileCount 文件已清理"
             }
+        }
+    }
+
+    # 刪除所有空的目錄
+    $Dirs = Get-ChildItem -Path $FolderPath -Recurse -Force -Directory -ErrorAction SilentlyContinue
+    $Dirs | Sort-Object -Property FullName -Descending | ForEach-Object {
+        try {
+            Remove-Item -Path $_.FullName -Force -Recurse -ErrorAction Stop
         } catch {
-            Write-Warning "❌ 無法刪除: $($_.Exception.Message)"
-            Take-Ownership -Path $File.FullName
+            Write-Warning "⚠ 無法刪除資料夾: $($_.FullName)"
         }
     }
 
