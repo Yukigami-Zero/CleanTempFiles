@@ -1,114 +1,106 @@
-# Clean TEMP folders, including system permission handling
-# Simplified version - No logging, ensuring stability and clear output
-# Author: Yukigami Zero
+<#
+    .SYNOPSIS
+    Cleans system and user TEMP folders, including ownership handling.
 
-function Check-Admin {
-    $IsAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
-    if (-not $IsAdmin) {
-        Write-Warning "⚠ This script requires administrator privileges to clean system TEMP folders."
-        Write-Output "Please run this script as an administrator!"
+    .DESCRIPTION
+    This script cleans TEMP folders and takes ownership of files or folders if needed.
+    No logging functionality, focusing on stability and clear output.
+
+    .AUTHOR
+    Yukigami Zero
+
+    .EXAMPLE
+    .\CleanTemp.ps1
+#>
+
+# Check for administrative privileges
+function Test-AdminPrivilege {
+    $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if (-not $isAdmin) {
+        Write-Warning "⚠ Administrative privileges required. Please run as Administrator!"
         exit 1
     }
-    Write-Output "✅ Running with administrator privileges confirmed."
+    Write-Output "✅ Confirmed running with admin privileges"
 }
 
-function Take-Ownership {
-    param ([string]$Path)
+# Take ownership of a file or folder
+function Set-FolderOwnership {
+    param ([Parameter(Mandatory)][string]$Path)
     try {
-        $null = takeown /F $Path /A /R /D Y
-        $null = icacls $Path /grant Administrators:F /T /C /Q
-        Write-Output "✅ Ownership taken for: $Path"
-        return $true
+        takeown /F $Path /A /R /D Y | Out-Null
+        icacls $Path /grant Administrators:F /T /C /Q | Out-Null
+        Write-Output "✅ Ownership taken for $Path"
+        $true
     } catch {
-        Write-Warning "❌ Failed to change permissions for: $Path - $($_.Exception.Message)"
-        return $false
+        Write-Warning "❌ Failed to change permissions for $Path - $($_.Exception.Message)"
+        $false
     }
 }
 
-function Clean-TempFolder {
+# Clean a specified TEMP folder
+function Clear-TempFolder {
     param (
-        [Parameter(Mandatory=$true)][string]$FolderPath,
-        [Parameter(Mandatory=$true)][string]$FolderName
+        [Parameter(Mandatory)][string]$FolderPath,
+        [Parameter(Mandatory)][string]$FolderName
     )
 
-    if (!(Test-Path $FolderPath)) {
-        Write-Warning "$FolderName folder does not exist: $FolderPath"
+    if (-not (Test-Path $FolderPath)) {
+        Write-Warning "⚠ $FolderName folder does not exist: $FolderPath"
         return
     }
 
-    Write-Output "🔍 Starting cleanup: $FolderName - $FolderPath"
+    Write-Output "🔍 Starting cleanup of $FolderName folder: $FolderPath"
 
     try {
-        $Items = Get-ChildItem -Path $FolderPath -Recurse -Force -ErrorAction Stop
-        $TotalItems = $Items.Count
-        $Counter = 0
-
-        if ($TotalItems -eq 0) {
-            Write-Output "✅ No cleanup needed for: $FolderName"
+        $items = Get-ChildItem -Path $FolderPath -Recurse -Force -ErrorAction Stop
+        $total = $items.Count
+        if ($total -eq 0) {
+            Write-Output "✅ $FolderName folder is already empty"
             return
         }
 
-        foreach ($Item in $Items) {
-            $Counter++
-            Write-Output "Processing: $Counter / $TotalItems - $($Item.FullName)"
+        $counter = 0
+        foreach ($item in $items) {
+            $counter++
+            $itemPath = $item.FullName
+            Write-Output "Processing: $counter/$total - $itemPath"
 
             try {
-                if ($Item.PSIsContainer) {
-                    if ((Get-ChildItem -Path $Item.FullName -Recurse -Force | Measure-Object).Count -eq 0) {
-                        Remove-Item -Path $Item.FullName -Force -ErrorAction Stop
-                        Write-Output "✅ Deleted empty folder: $($Item.FullName)"
-                    }
-                } else {
-                    Remove-Item -Path $Item.FullName -Force -ErrorAction Stop
-                    Write-Output "✅ Deleted file: $($Item.FullName)"
-                }
+                Remove-Item -Path $itemPath -Force -Recurse -ErrorAction Stop
+                Write-Output "✅ Deleted: $itemPath"
             } catch {
-                Write-Warning "❌ Unable to process: $($Item.FullName), attempting to take ownership..."
-                if (!(Take-Ownership -Path $Item.FullName)) {
-                    Write-Warning "⚠ Failed to gain ownership: $($Item.FullName)"
+                Write-Warning "❌ Failed to delete: $itemPath, attempting to take ownership..."
+                if (-not (Set-FolderOwnership -Path $itemPath)) {
+                    Write-Warning "⚠ Unable to take ownership: $itemPath"
                     continue
                 }
                 Start-Sleep -Milliseconds 50
-                try {
-                    Remove-Item -Path $Item.FullName -Force -ErrorAction Stop
-                    Write-Output "✅ Successfully deleted after ownership change: $($Item.FullName)"
-                } catch {
-                    Write-Warning "⚠ Final deletion attempt failed: $($Item.FullName)"
-                }
+                Remove-Item -Path $itemPath -Force -Recurse -ErrorAction Stop
+                Write-Output "✅ Successfully deleted: $itemPath"
             }
 
-            if ($Counter % 10 -eq 0 -or $Counter -eq $TotalItems) {
-                Write-Progress -PercentComplete (($Counter / $TotalItems) * 100) -Status "Cleaning in progress" -Activity "$Counter / $TotalItems processed"
+            if ($counter % 10 -eq 0 -or $counter -eq $total) {
+                Write-Progress -Activity "Cleaning $FolderName" -Status "$counter/$total items processed" -PercentComplete (($counter / $total) * 100)
             }
         }
 
-        $EmptyDirs = Get-ChildItem -Path $FolderPath -Recurse -Force -Directory | Where-Object { (Get-ChildItem -Path $_.FullName -Recurse -Force | Measure-Object).Count -eq 0 }
-        foreach ($Dir in $EmptyDirs | Sort-Object -Property FullName -Descending) {
-            try {
-                Remove-Item -Path $Dir.FullName -Force -ErrorAction Stop
-                Write-Output "✅ Deleted empty folder: $($Dir.FullName)"
-            } catch {
-                Write-Warning "⚠ Unable to delete folder: $($Dir.FullName)"
-            }
-        }
-
-        Write-Output "✅ Cleanup completed for: $FolderName"
-
+        Write-Output "✅ Cleanup completed for $FolderName folder"
     } catch {
-        Write-Warning "🔴 Error occurred during cleanup: $($_.Exception.Message)"
+        Write-Warning "🔴 Error occurred during cleanup - $($_.Exception.Message)"
     } finally {
-        Write-Progress -Completed -Activity "Cleanup completed"
+        Write-Progress -Activity "Cleanup of $FolderName completed" -Completed
     }
 }
 
-Check-Admin
+# Main execution
+Test-AdminPrivilege
 
 Write-Output "====================================="
-Write-Output "🧹 Cleaning system and user TEMP folders"
+Write-Output "🧹 TEMP Folder Cleanup Tool"
 Write-Output "📌 Author: Yukigami Zero"
 Write-Output "====================================="
 
-Clean-TempFolder -FolderPath ([System.IO.Path]::GetTempPath()) -FolderName "User TEMP"
-Clean-TempFolder -FolderPath "C:\Windows\Temp" -FolderName "System TEMP"
+Clear-TempFolder -FolderPath ([System.IO.Path]::GetTempPath()) -FolderName "User TEMP"
+Clear-TempFolder -FolderPath "C:\Windows\Temp" -FolderName "System TEMP"
 
-Write-Output "🎉 All cleanup tasks completed."
+Write-Output "🎉 All cleanup tasks completed!"
