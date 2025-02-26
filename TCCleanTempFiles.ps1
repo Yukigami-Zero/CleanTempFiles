@@ -66,7 +66,11 @@ function Clear-TempFolder {
             Write-Output "處理中: $counter/$total - $itemPath"
 
             try {
-                Remove-Item -Path $itemPath -Force -Recurse -ErrorAction Stop
+                if ($item.PSIsContainer) {
+                    Remove-Item -Path $itemPath -Force -Recurse -ErrorAction Stop
+                } else {
+                    Remove-Item -Path $itemPath -Force -ErrorAction Stop
+                }
                 Write-Output "✅ 已刪除: $itemPath"
             } catch {
                 Write-Warning "❌ 無法刪除: $itemPath，嘗試取得權限..."
@@ -75,8 +79,16 @@ function Clear-TempFolder {
                     continue
                 }
                 Start-Sleep -Milliseconds 50
-                Remove-Item -Path $itemPath -Force -Recurse -ErrorAction Stop
-                Write-Output "✅ 最終成功刪除: $itemPath"
+                try {
+                    if ($item.PSIsContainer) {
+                        Remove-Item -Path $itemPath -Force -Recurse -ErrorAction Stop
+                    } else {
+                        Remove-Item -Path $itemPath -Force -ErrorAction Stop
+                    }
+                    Write-Output "✅ 最終成功刪除: $itemPath"
+                } catch {
+                    Write-Warning "❌ 最終仍然無法刪除: $itemPath"
+                }
             }
 
             if ($counter % 10 -eq 0 -or $counter -eq $total) {
